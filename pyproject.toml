@@ -1,0 +1,112 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asl-sign-to-speech"
+version = "2.0.0"
+description = "Static ASL fingerspelling recognition with FastAPI, MediaPipe, and scikit-learn"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Sign to Speech contributors"}]
+dependencies = [
+  "fastapi>=0.116,<1",
+  "uvicorn[standard]>=0.35,<1",
+  "pydantic>=2.10,<3",
+  "pydantic-settings>=2.10,<3",
+  "python-multipart>=0.0.20,<1",
+  "httpx>=0.28,<1",
+  "mediapipe>=1.1,<2",
+  "opencv-contrib-python>=5.0,<6",
+  "scikit-learn>=1.6,<2",
+  "numpy>=2.1,<3",
+  "pandas>=2.2,<3",
+  "pyttsx3>=2.98,<3",
+  "joblib>=1.4,<2",
+  "matplotlib>=3.10,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3,<9",
+  "pytest-cov>=6.2,<7",
+  "ruff>=0.12,<1",
+  "mypy>=1.17,<2",
+  "pre-commit>=4.0,<5",
+]
+onnx = [
+  "onnx>=1.18,<2",
+  "onnxruntime>=1.22,<2",
+  "skl2onnx>=1.20,<2",
+]
+
+[project.scripts]
+asl-serve = "app:main"
+asl-collect = "collect_data:main"
+asl-preprocess = "preprocess_data:main"
+asl-train = "train_model:main"
+asl-evaluate = "evaluate_model:main"
+
+[tool.setuptools]
+py-modules = ["app", "collect_data", "preprocess_data", "train_model", "evaluate_model"]
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --cov=src --cov-report=term-missing --cov-fail-under=70"
+filterwarnings = [
+  "ignore::DeprecationWarning:mediapipe.*",
+  "ignore::DeprecationWarning:google.*",
+]
+
+[tool.coverage.run]
+source = ["src"]
+branch = false
+omit = ["src/__init__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+  "if __name__ == .__main__.:",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [".venv", "data", "artifacts", "models"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = [
+  "E501",  # long lines are handled by the formatter and readable comments matter more
+  "B008",  # FastAPI's Depends/Query defaults are intentional
+  "SIM108",  # explicit branches are sometimes clearer in experiment code
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+"scripts/*" = ["E402"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src"]
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+check_untyped_defs = true
+no_implicit_optional = true
+ignore_missing_imports = true
+exclude = ["src/__init__.py"]
+
+[[tool.mypy.overrides]]
+module = ["mediapipe.*", "cv2.*", "pyttsx3.*", "onnxruntime.*", "skl2onnx.*"]
+ignore_missing_imports = true

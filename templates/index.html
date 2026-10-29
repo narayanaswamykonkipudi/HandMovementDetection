@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Recognise static ASL fingerspelling handshapes locally, build text, and hear it spoken.">
+  <meta name="color-scheme" content="dark light">
+  <title>Sign to Speech — ASL Fingerspelling</title>
+  <script>
+    // Apply the saved theme before first paint to avoid a flash of the wrong theme.
+    (() => {
+      try {
+        const saved = localStorage.getItem("asl-theme");
+        const prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+        const theme = saved === "light" || saved === "dark" ? saved : (prefersLight ? "light" : "dark");
+        document.documentElement.dataset.theme = theme;
+      } catch (_) {
+        document.documentElement.dataset.theme = "dark";
+      }
+    })();
+  </script>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="brand-copy">
+        <h1>Sign to Speech</h1>
+        <p class="subtitle">Sign a letter, see the text, hear it spoken</p>
+      </div>
+    </div>
+    <div class="header-actions" role="group" aria-label="Help and display options">
+      <button id="theme-toggle" class="icon-button" type="button" aria-label="Switch to light theme" title="Toggle theme">
+        <span class="theme-icon theme-icon-sun" aria-hidden="true">☀</span>
+        <span class="theme-icon theme-icon-moon" aria-hidden="true">☾</span>
+      </button>
+      <button id="shortcut-help" class="icon-button" type="button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts" aria-haspopup="dialog">
+        <span aria-hidden="true">⌘</span>
+      </button>
+      <button id="about-button" class="icon-button" type="button" aria-label="About this app" title="About this app" aria-haspopup="dialog">
+        <span aria-hidden="true">i</span>
+      </button>
+    </div>
+  </header>
+
+  <div id="banners" class="banners" aria-live="polite">
+    <div id="banner-demo" class="banner banner-demo hidden">
+      <span><strong>Demo mode:</strong> predictions are not reliable yet.</span>
+      <button id="demo-learn-more" class="banner-link" type="button">Learn more</button>
+    </div>
+    <div id="banner-nomodel" class="banner banner-error hidden">
+      <strong>Recognition is unavailable.</strong>
+      <span id="nomodel-detail">Start the app with a trained model to recognise letters.</span>
+    </div>
+    <div id="banner-offline" class="banner banner-error hidden">
+      <strong>Connection lost.</strong>
+      <span id="offline-text">Trying to reconnect automatically.</span>
+      <button id="reconnect-server" class="banner-link" type="button">Reconnect</button>
+    </div>
+  </div>
+
+  <main id="main" class="layout">
+    <section id="onboarding" class="onboarding hidden" aria-labelledby="onboarding-title">
+      <div class="onboarding-intro">
+        <h2 id="onboarding-title">Get started in three steps</h2>
+        <p>No account, no upload. Everything happens in the app.</p>
+      </div>
+      <ol class="onboarding-steps">
+        <li><span class="step-number" aria-hidden="true">1</span><span><strong>Allow the camera</strong><small>Choose your camera and press Start camera.</small></span></li>
+        <li><span class="step-number" aria-hidden="true">2</span><span><strong>Show one hand, hold still</strong><small>Keep your whole hand in view.</small></span></li>
+        <li><span class="step-number" aria-hidden="true">3</span><span><strong>Press Speak</strong><small>Your letters appear in Your text.</small></span></li>
+      </ol>
+      <button id="onboarding-dismiss" class="button button-primary" type="button">Got it</button>
+    </section>
+
+    <div class="primary-grid">
+      <section class="card camera-card" aria-labelledby="camera-heading">
+        <div class="card-heading">
+          <h2 id="camera-heading">Camera</h2>
+          <span id="camera-badge" class="status status-idle"><span class="dot" aria-hidden="true"></span><span id="camera-status-text">Camera off</span></span>
+        </div>
+
+        <div class="video-frame" id="video-frame">
+          <div class="video-skeleton" id="video-skeleton" aria-hidden="true">
+            <div class="skeleton-line wide"></div>
+            <div class="skeleton-line"></div>
+            <div class="skeleton-caption">Waiting for camera…</div>
+          </div>
+          <img id="video" src="/video_feed" alt="Live webcam preview">
+          <div id="video-overlay" class="video-overlay hidden">
+            <span class="spinner" aria-hidden="true"></span>
+            <span id="video-overlay-text">Opening camera…</span>
+          </div>
+        </div>
+
+        <div class="camera-controls">
+          <button id="start-camera" class="button button-primary" type="button">Start camera</button>
+          <button id="stop-camera" class="button" type="button" disabled title="The camera is already off.">Stop</button>
+          <label class="select-label" for="camera-device">
+            <span class="visually-hidden">Camera device</span>
+            <select id="camera-device">
+              <option value="0">Camera 0</option>
+            </select>
+          </label>
+        </div>
+
+        <details class="upload-panel">
+          <summary>No camera? Try one photo</summary>
+          <p>Choose a clear photo of one hand. It is used once and not saved.</p>
+          <label class="file-label" for="image-upload">Choose a hand image</label>
+          <input id="image-upload" type="file" accept="image/jpeg,image/png,image/webp">
+          <div id="image-result" class="image-result hidden" aria-live="polite"></div>
+        </details>
+      </section>
+
+      <section class="card recognition-card" aria-labelledby="recognition-heading">
+        <div class="card-heading">
+          <h2 id="recognition-heading">Detected letter</h2>
+        </div>
+
+        <div class="prediction-stage">
+          <div class="sign-wrap">
+            <div id="sign-display" class="sign-display" aria-live="polite" aria-atomic="true">—</div>
+            <div class="hold-ring" aria-hidden="true">
+              <svg viewBox="0 0 100 100" role="presentation">
+                <circle class="hold-ring-track" cx="50" cy="50" r="44"></circle>
+                <circle id="hold-ring-progress" class="hold-ring-progress" cx="50" cy="50" r="44"></circle>
+              </svg>
+              <span id="hold-ring-label">Hold</span>
+            </div>
+          </div>
+          <div class="confidence-block">
+            <div class="confidence-line">
+              <span>Confidence</span>
+              <strong id="confidence-value">—</strong>
+            </div>
+            <div class="meter" role="progressbar" aria-labelledby="confidence-value" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="confidence-meter">
+              <span id="confidence-fill"></span>
+            </div>
+          </div>
+          <p id="recognition-message" class="recognition-message" aria-live="polite">Camera is off. Press Start camera</p>
+        </div>
+      </section>
+    </div>
+
+    <section class="card text-card" aria-labelledby="text-heading">
+      <div class="card-heading">
+        <h2 id="text-heading">Your text</h2>
+        <span id="char-count" class="char-count">0 / {{ max_text_length }}</span>
+      </div>
+
+      <div id="text-output" class="text-output is-empty" role="textbox" aria-readonly="true" aria-live="polite" aria-atomic="true" aria-label="Your recognised text">
+        <span id="text-placeholder" class="text-placeholder">Your letters will appear here. Hold a sign steadily to add it.</span>
+        <span id="text-content"></span><span class="caret" aria-hidden="true"></span>
+      </div>
+
+      <div class="text-controls" role="group" aria-label="Text actions">
+        <button id="speak" class="button button-primary button-speak" type="button">Speak</button>
+        <button id="space" class="button" type="button">Space</button>
+        <button id="delete" class="button" type="button">Delete</button>
+        <button id="clear" class="button button-danger" type="button">Clear</button>
+
+        <details id="more-menu" class="more-menu">
+          <summary class="button button-secondary">More</summary>
+          <div class="menu-panel">
+            <button id="undo" class="menu-button" type="button">Undo</button>
+            <button id="copy-text" class="menu-button" type="button">Copy</button>
+            <button id="download-text" class="menu-button" type="button">Save</button>
+            <button id="add-current" class="menu-button" type="button">Add letter</button>
+          </div>
+        </details>
+      </div>
+
+      <div class="speech-row">
+        <span class="voice-state"><span class="dot" aria-hidden="true"></span><span id="speech-status">Voice ready</span></span>
+        <button id="stop-speak" class="link-button" type="button" disabled title="Nothing is speaking.">Stop</button>
+        <details id="voice-panel" class="voice-panel">
+          <summary class="icon-button voice-toggle" aria-label="Voice settings" title="Voice settings">
+            <span aria-hidden="true">⚙</span>
+          </summary>
+          <div class="voice-popover">
+            <h3>Voice settings</h3>
+            <label for="voice-select">Voice
+              <select id="voice-select"></select>
+            </label>
+            <label for="voice-rate">Speed <output id="voice-rate-value">170</output>
+              <input id="voice-rate" type="range" min="90" max="300" step="5" value="170">
+            </label>
+            <label for="voice-volume">Volume <output id="voice-volume-value">100%</output>
+              <input id="voice-volume" type="range" min="0" max="1" step="0.05" value="1">
+            </label>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <div class="bottom-grid">
+      <section class="card tips-card" aria-labelledby="tips-heading">
+        <h2 id="tips-heading">Tips for best results</h2>
+        <ul class="help-list">
+          <li>Show <strong>one hand</strong>, well lit, filling about a third of the frame.</li>
+          <li>Keep your whole hand visible and hold still for a moment.</li>
+          <li>A letter is added once. Lower your hand before repeating it.</li>
+          <li>Use <strong>Delete</strong> to correct mistakes and <strong>Space</strong> between words.</li>
+        </ul>
+      </section>
+
+      <section class="card alphabet-card" aria-labelledby="alphabet-heading">
+        <h2 id="alphabet-heading" class="visually-hidden">ASL alphabet reference</h2>
+        <details>
+          <summary>Need help with a letter? <span class="summary-note">ASL alphabet reference</span></summary>
+          <p class="fine-print">Choose a letter for a plain-language reminder of its static handshape.</p>
+          <div id="alphabet-grid" class="alphabet-grid" aria-label="Supported ASL static letters">
+            {% for letter in static_letters %}<button class="alphabet-letter" type="button" data-letter="{{ letter }}" aria-label="Letter {{ letter }}">{{ letter }}</button>{% endfor %}
+          </div>
+          <p id="alphabet-note" class="alphabet-note" aria-live="polite">Select a letter to see a handshape note.</p>
+        </details>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <p>Static ASL fingerspelling only. J and Z need motion and are not included.</p>
+  </footer>
+
+  <dialog id="shortcuts-dialog" class="app-dialog" aria-labelledby="shortcuts-title">
+    <div class="dialog-heading">
+      <h2 id="shortcuts-title">Keyboard shortcuts</h2>
+      <button id="close-shortcuts" class="icon-button" type="button" aria-label="Close shortcuts">×</button>
+    </div>
+    <dl class="shortcut-list">
+      <div><dt><kbd>Space</kbd></dt><dd>Add a space</dd></div>
+      <div><dt><kbd>Backspace</kbd></dt><dd>Delete the last character</dd></div>
+      <div><dt><kbd>Ctrl</kbd> + <kbd>Z</kbd></dt><dd>Undo</dd></div>
+      <div><dt><kbd>Enter</kbd></dt><dd>Speak your text</dd></div>
+      <div><dt><kbd>Esc</kbd></dt><dd>Stop speech or close a dialog</dd></div>
+    </dl>
+    <p class="fine-print">Shortcuts are ignored while typing in a field.</p>
+  </dialog>
+
+  <dialog id="about-dialog" class="app-dialog about-dialog" aria-labelledby="about-title">
+    <div class="dialog-heading">
+      <h2 id="about-title">About Sign to Speech</h2>
+      <button id="close-about" class="icon-button" type="button" aria-label="Close About">×</button>
+    </div>
+    <div class="about-copy">
+      <p><strong>What it does.</strong> This recognises static ASL fingerspelling: 24 letters, with J and Z excluded because they need motion. Hold one handshape steadily to add a letter, then build text and hear it spoken.</p>
+      <p><strong>What it does not do.</strong> It is not a sign language translator. It does not understand ASL grammar, facial expression, continuous signing, or other sign languages.</p>
+      <p id="about-demo-note" class="notice hidden"><strong>Demo model.</strong> Predictions use synthetic training data and are for demonstration only. They are not reliable ASL recognition.</p>
+      <p class="fine-print">Recognition happens on this device. Video is not uploaded or saved.</p>
+    </div>
+
+    <section id="developer-details" class="dev-details hidden" aria-labelledby="dev-title">
+      <div class="section-row">
+        <h3 id="dev-title">Developer details</h3>
+        <span id="model-kind" class="pill">unknown</span>
+      </div>
+      <div class="dev-status-row">
+        <span id="model-badge" class="status status-idle"><span class="dot" aria-hidden="true"></span><span id="model-status-text">Model —</span></span>
+        <span class="dev-meta"><span id="fps-label">0.0 fps</span> · <span id="hand-label">No hand</span></span>
+        <button id="reload-model" class="button button-quiet button-small" type="button">Reload model</button>
+      </div>
+      <dl class="facts">
+        <div><dt>Classes</dt><dd id="model-classes">—</dd></div>
+        <div><dt>Confidence threshold</dt><dd id="model-thresholds">—</dd></div>
+        <div><dt>Validation macro-F1</dt><dd id="model-f1">—</dd></div>
+        <div><dt>Smoothing</dt><dd id="model-smoothing">—</dd></div>
+      </dl>
+      <h4>Top alternatives <span class="muted">frame-level</span></h4>
+      <ol id="top-list" class="top-list">
+        <li class="empty-row">Waiting for a hand…</li>
+      </ol>
+    </section>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

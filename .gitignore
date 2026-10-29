@@ -1,0 +1,50 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local secrets and coverage output
+.env
+.coverage
+.coverage.*
+htmlcov/
+
+# Source image dataset (large; verify its licence before redistribution)
+Dataset_kaggle/
+
+# Generated datasets (may contain biometric/landmark data)
+data/raw/
+data/demo/
+data/imported/
+data/processed/
+data/processed_kaggle/
+data/merged/
+data/samples/
+
+# Downloaded model asset and trained models
+models/*.task
+models/*.joblib
+models/*_card.json
+models/*_selection.json
+models/model_card.json
+
+# Evaluation output and logs
+artifacts/
+*.log
